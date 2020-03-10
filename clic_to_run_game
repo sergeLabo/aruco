@@ -1,0 +1,7 @@
+#!/bin/bash
+# -*- coding: UTF-8 -*-
+
+
+cd blender
+
+blenderplayer aruco.blend
