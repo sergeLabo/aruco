@@ -20,8 +20,10 @@ from webcam import apply_all_cam_settings, apply_cam_setting
 import yaml
 from pathlib import Path
 from tqdm import tqdm
+import json
 
 from myconfig import MyConfig
+from multicast import Multicast
 
 class WebcamSettings:
 
@@ -216,10 +218,13 @@ class WebcamSettings:
             apply_cam_setting(self.cam, key, value)
 
 
-class ArucoCalibrateWebcam(WebcamSettings):
+class ArucoTest(WebcamSettings):
 
     def __init__(self, cam, cf):
         super().__init__(cam, cf)
+
+        # Pour le multicast
+        self.sender = None
 
         self.width = 1280
         self.height = 720
@@ -254,18 +259,20 @@ class ArucoCalibrateWebcam(WebcamSettings):
         Esc to quit
         """
 
+        time.sleep(5)
         while self.count < 50:
             name = self.path + str(self.count)+".jpg"
             ret, img = self.cap.read()
-
+            # #im = cv2.resize(img, (2304, 1296),
+                            # #interpolation=cv2.INTER_AREA)
             cv2.imshow("Original", img)
 
             # Affichage des trackbars
             cv2.imshow('Reglage', self.reglage_img)
-            print("ok",self.count)
+
             if time.time() - self.t > 2:
                 cv2.imwrite(name, img)
-                print("count", self.count, name)
+                print([self.count]*10 )
                 self.count += 1
                 self.t = time.time()
 
@@ -319,10 +326,14 @@ class ArucoCalibrateWebcam(WebcamSettings):
         counter = np.array(counter)
         print ("Calibrating camera .... Please wait...")
         #mat = np.zeros((3,3), float)
-        ret, mtx, dist, rvecs, tvecs = aruco.calibrateCameraAruco(corners_list,
-                                                        id_list, counter,
-                                                        self.board,
-                                                        img_gray.shape, None, None )
+        ret, mtx, dist, rvecs, tvecs = aruco.calibrateCameraAruco(
+                                                                corners_list,
+                                                                id_list,
+                                                                counter,
+                                                                self.board,
+                                                                img_gray.shape,
+                                                                None,
+                                                                None)
 
         a = "Camera matrix is \n"
         b = "\n And is stored in calibration.yaml file\n"
@@ -350,6 +361,8 @@ class ArucoCalibrateWebcam(WebcamSettings):
                     (usually in meters)
         """
 
+        self.sender = Multicast("224.0.0.11", 18888)
+
         print("\n\nValidating real time results ...\n")
         with open('calibration.yaml') as f:
             loadeddict = yaml.load(f)
@@ -368,7 +381,19 @@ class ArucoCalibrateWebcam(WebcamSettings):
                                                           (w,h))
 
         pose_r, pose_t = [], []
+        t = time.time()
+        n = 0
+
+        rvec = np.zeros((3,), dtype=np.float32)
+        tvec = np.zeros((3,), dtype=np.float32)
+
         while True:
+            n += 1
+            if time.time() - t > 1:
+                print(n)
+                n = 0
+                t = time.time()
+
             ret, img = self.cap.read()
             img_aruco = img
             im_gray = cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
@@ -383,12 +408,7 @@ class ArucoCalibrateWebcam(WebcamSettings):
                                                 self.aruco_dict,
                                                 parameters=self.aruco_params)
 
-            if corners == None:
-                print ("pass")
-            else:
-                rvec = np.zeros((3,), dtype=np.float32)
-                tvec = np.zeros((3,), dtype=np.float32)
-
+            if corners  :
                 # For a board
                 ret, rvec, tvec = aruco.estimatePoseBoard(corners,
                                                           ids,
@@ -399,13 +419,7 @@ class ArucoCalibrateWebcam(WebcamSettings):
                                                           tvec,
                                                           useExtrinsicGuess=0)
 
-                print("ret =", ret)
-                print("rvec =", rvec)
-                print("tvec =", tvec)
-                print("Rotation ", rvec)
-                print("Translation", tvec)
-
-                if ret != 0:
+                if ret != 0:  # ret = nb de reconnaissance
                     img_aruco = aruco.drawDetectedMarkers(img,
                                                           corners,
                                                           ids,
@@ -419,13 +433,17 @@ class ArucoCalibrateWebcam(WebcamSettings):
                                                tvec,
                                                10)
 
-                    cv2.imshow("World co-ordinate frame axes", img_aruco)
-
+                    # #img_aruco = cv2.resize(img_aruco, (1024, 576),
+                                        # #interpolation=cv2.INTER_AREA)
+                    cv2.imshow("World co-ordinate axes", img_aruco)
+                    cv2.imshow("Reglage", self.reglage_img)
                     # Send to Blender
-                    self.sender.send([rvec, tvec])
+                    data = json.dumps({"rvec": rvec.tolist(),
+                                       "tvec": tvec.tolist()}).encode("utf-8")
+                    self.sender.send_to(data, ("224.0.0.11", 18888))
 
-                if cv2.waitKey(10) == 27:
-                    break
+            if cv2.waitKey(100) == 27:
+                break
 
         cv2.destroyAllWindows()
 
@@ -438,7 +456,131 @@ if __name__ == "__main__":
     conf = cf.conf
     apply_all_cam_settings(conf["HD5000"], cam)
 
-    acw = ArucoCalibrateWebcam(cam, cf)
-    # #acw.get_data_calibration()
-    # #acw.calibrate()
-    acw.validating_real_time_results()
+    at = ArucoTest(cam, cf)
+    # #at.get_data_calibration()
+    # #at.calibrate()
+    at.validating_real_time_results()
+
+
+"""
+Rodrigues
+[[ 2.2335851 ]
+ [-2.0081005 ]
+ [ 0.34698185]]
+
+(array([[ 0.09461465, -0.99137014,  0.09073787],
+       [-0.96433645, -0.11390218, -0.23891737],
+       [ 0.24719077, -0.06489675, -0.96679115]], dtype=float32),
+
+array([[ 0.40289462,  0.08483694,  0.5067903 , -0.09014234, -0.47822452,
+         0.5918296 , -0.50587356, -0.4566329 , -0.09869069],
+       [ 0.51336914,  0.01708273, -0.348663  ,  0.17439753, -0.44564393,
+        -0.49145895,  0.48385966,  0.52120495,  0.08872768],
+       [-0.08870561,  0.04223418,  0.55393136,  0.09296247, -0.07429098,
+        -0.33980453,  0.39661658, -0.5147838 ,  0.13596293]],
+      dtype=float32))
+"""
+"""
+corners [array([
+                [
+                [441., 489.],
+                [448., 389.],
+                [547., 393.],
+                [542., 492.]
+                ]
+                ], dtype=float32),
+
+        array([[[784., 501.],
+        [783., 403.],
+        [879., 407.],
+        [883., 508.]]], dtype=float32), array([[[671., 496.],
+        [674., 397.],
+        [770., 403.],
+        [771., 500.]]], dtype=float32), array([[[556., 492.],
+        [561., 393.],
+        [660., 398.],
+        [657., 496.]]], dtype=float32), array([[[324., 485.],
+        [334., 385.],
+        [435., 390.],
+        [427., 488.]]], dtype=float32), array([[[783., 390.],
+        [783., 296.],
+        [877., 301.],
+        [878., 394.]]], dtype=float32), array([[[673., 383.],
+        [675., 290.],
+        [770., 296.],
+        [770., 389.]]], dtype=float32), array([[[561., 379.],
+        [566., 285.],
+        [662., 289.],
+        [659., 384.]]], dtype=float32), array([[[449., 376.],
+        [456., 281.],
+        [553., 285.],
+        [548., 379.]]], dtype=float32), array([[[335., 371.],
+        [345., 276.],
+        [443., 281.],
+        [435., 376.]]], dtype=float32), array([[[782., 283.],
+        [782., 194.],
+        [874., 198.],
+        [875., 288.]]], dtype=float32), array([[[676., 277.],
+        [678., 187.],
+        [770., 193.],
+        [769., 283.]]], dtype=float32), array([[[566., 271.],
+        [571., 182.],
+        [665., 187.],
+        [662., 276.]]], dtype=float32), array([[[457., 268.],
+        [463., 178.],
+        [558., 182.],
+        [553., 272.]]], dtype=float32), array([[[346., 263.],
+        [355., 173.],
+        [450., 177.],
+        [443., 268.]]], dtype=float32), array([[[782., 182.],
+        [782.,  97.],
+        [871., 101.],
+        [874., 185.]]], dtype=float32), array([[[678., 175.],
+        [679.,  89.],
+        [770.,  96.],
+        [769., 181.]]], dtype=float32), array([[[571., 169.],
+        [576.,  83.],
+        [667.,  88.],
+        [665., 174.]]], dtype=float32), array([[[464., 165.],
+        [470.,  79.],
+        [562.,  83.],
+        [558., 169.]]], dtype=float32), array([[[356., 160.],
+        [365.,  74.],
+        [457.,  79.],
+        [451., 165.]]], dtype=float32)]
+ids [
+ [ 4]
+ [16]
+ [12]
+ [ 8]
+ [ 0]
+ [17]
+ [13]
+ [ 9]
+ [ 5]
+ [ 1]
+ [18]
+ [14]
+ [10]
+ [ 6]
+ [ 2]
+ [19]
+ [15]
+ [11]
+ [ 7]
+ [ 3]
+ ]
+
+dst [
+     [35 50 50 ... 73 52  0]
+     [53 71 71 ... 70 51  0]
+     [57 72 72 ... 70 53  0]
+     ...
+     [ 0  0  0 ...  0  0  0]
+     [ 0  0  0 ...  0  0  0]
+     [ 0  0  0 ...  0  0  0]
+     ]
+
+ rvec [ 2.1580064  -2.0807793   0.31055728]
+ tvec [ 9.2809725  6.315045  41.50131  ]
+"""

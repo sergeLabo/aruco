@@ -25,6 +25,7 @@ from bge import logic as gl
 import mathutils
 import ast
 
+QUOI = 1
 
 def main():
     # Récup des datas de la pyboard
@@ -36,36 +37,80 @@ def main():
 
     if raw_data:
         data_to_var(raw_data)
-        set_rot_trans()
+        if QUOI == 1:
+            set_rot()
+            set_trans()
+        else:
+            set_rot_one()
+            set_trans_one()
 
-"""
-{'rvec': [-0.042519230395555496, -2.772643804550171, 0.22376395761966705],
-'tvec': [17.984437942504883, -27.281139373779297, 116.52149200439453]}
-"""
+def set_rot():
 
+    alpha = - gl.rvec[2]
+    if alpha > 0.18:
+        alpha = - alpha + 0.37
+    # #alpha = 0
 
-def set_rot_trans():
+    beta = gl.rvec[0] - 2
+    if beta < -3:
+        beta += 4
+    # #beta = 0
 
-    alpha = gl.rvec[0]
-    beta = gl.rvec[1]
-    gamma = gl.rvec[2]
+    gamma = gl.rvec[1] + 2
+    if gamma > 3.8:
+        gamma -= 4.2
+    # #gamma = 0
 
-    # #print(round(alpha, 2), round(beta, 2), round(gamma, 2))
+    print("angle", round(alpha, 2), round(beta, 2), round(gamma, 2))
 
     # set objects orientation with alpha, beta, gamma in radians
-    # #rot_en_euler_cam = mathutils.Euler([alpha, beta, gamma])
-    rot_en_euler_cam = mathutils.Euler([alpha, beta, gamma])
-
+    rot_en_euler = mathutils.Euler([alpha, beta-0.2, gamma+0.2])
 
     # apply to objects local orientation if ok
-    gl.cube.localOrientation = rot_en_euler_cam.to_matrix()
+    gl.cube.localOrientation = rot_en_euler.to_matrix()
 
-    # #gl.plane.localScale = 1, 1, beta
-    x = gl.tvec[0]/10
-    y = gl.tvec[1]/10
-    z = gl.tvec[2]/100
-    print(round(x, 2), round(y, 2), round(z, 2))
+
+def set_trans():
+
+    x = -gl.tvec[0]/5 + 2
+    y = gl.tvec[2]/5 - 10
+    z = -gl.tvec[1]/5 + 2
+    # #print("position", round(x, 2), round(y, 2), round(z, 2))
     gl.cube.position = x, y, z
+
+
+def set_rot_one():
+
+    alpha = gl.rvec[0] - 2.8 - 0.32
+    if alpha < -4.5:
+        alpha += 4.5
+
+    beta = gl.rvec[1]
+    if beta < -3:
+        beta += 4
+
+    gamma = gl.rvec[2] - 0.35 -0.4
+    if gamma < -0.3:
+        gamma += 0.8
+
+    print("angle", round(alpha, 2), round(beta, 2), round(gamma, 2))
+
+    # set objects orientation with alpha, beta, gamma in radians
+    rot_en_euler = mathutils.Euler([alpha, beta, gamma])
+
+    # apply to objects local orientation if ok
+    gl.cube.localOrientation = rot_en_euler.to_matrix()
+
+
+def set_trans_one():
+
+    x = -gl.tvec[0]/2 - 5
+    y = gl.tvec[2]/2 - 6
+    z = -gl.tvec[1]/2 + 9.5
+
+    # #print("position", round(x, 2), round(y, 2), round(z, 2))
+    gl.cube.position = x, y, z
+
 
 def datagram_to_dict(data):
     """Décode le message. Retourne un dict ou None."""

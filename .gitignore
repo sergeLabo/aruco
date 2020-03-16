@@ -1,5 +1,19 @@
-# Object file
-*.o
+# Geany
+*.geany
+*.geanywb
 
-# Ada Library Information
-*.ali
+# divers
+*.blend1
+
+/old
+*.jpg
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyc
+
+# GitEye
+target/
+/.project
+*.project
